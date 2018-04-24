@@ -9,10 +9,15 @@ R, version 3.4.2
 **Data**
 
 nyt_urls: first attempt at url scrape and save 
+
 COP.articles.csv: All 714 weburls related to "community policing" from New York times API archive 
+
 All_articles.csv:the content from all NYT articles saved as a csv file 
+
 All_content: the contenct from all scraped articles as a text file 
+
 NYT_corpus.csv: the content of all the NYT articles saved as a single csv corpus for text editing
+
 Doc_Term_Matrix.csv: the document term matrix of all articles, cleaned, for text editing saved as a csv
 
 **Code**
