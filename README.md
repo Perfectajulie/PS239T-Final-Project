@@ -17,7 +17,7 @@ Doc_Term_Matrix.csv: the document term matrix of all articles, cleaned, for text
 
 **Code**  
 
-PS239 T Final.py: Collects data from New York Times API and exports data to the file COP.articles.csv. Scrapes the content of web urls from COP.articles.csv, saves at All_articles.csv. Loads and cleans raw data, saves as NYT_corpus for text analysis. Conducts descriptive analysis of the data, producing the tables and visualizations found in the Visualizations directory.
+PS239 T Final.rmd: Collects data from New York Times API and exports data to the file COP.articles.csv. Scrapes the content of web urls from COP.articles.csv, saves at All_articles.csv. Loads and cleans raw data, saves as NYT_corpus for text analysis. Conducts descriptive analysis of the data, producing the tables and visualizations found in the Visualizations directory.
 
 **Visualizations**
 
