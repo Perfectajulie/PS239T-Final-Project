@@ -1,4 +1,5 @@
 Short Description
+
 This project uses the New York Times archive API to collect 700+ web urls related to "community policing." Using R, the contents of these urls are then scraped, cleaned, and the text is analyzed.
 
 Dependencies
