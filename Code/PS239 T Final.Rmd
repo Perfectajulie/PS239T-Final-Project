@@ -1,0 +1,445 @@
+---
+title: "PS239 T Final"
+author: "Perfecta Oxholm"
+date: "3/16/2018"
+output: html_document
+---
+
+# Load Libraries & Set Working Directory 
+
+```{r}
+library(tidyr)
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(rvest)
+library(splitstackshape)
+
+library(stm)
+library(readxl)
+library(RJSONIO)
+library (RCurl)
+
+library(RTextTools)
+library(data.table)
+library(qdap)
+library(qdapDictionaries)
+library(tm)
+library(SnowballC)
+library(wordcloud)
+library(wordcloud2)
+library(RColorBrewer)
+
+setwd("~/PS239T-Final-Project")
+```
+
+## API
+ 
+
+```{r}
+# Create API Function
+
+# Enter parameters 
+apikey <- "cd4fc0f238e04222bf79856b243299d5" #hotmail email
+#apikey <- "5756cf3d791442b490c1972c80d2c5a8" # uc berkeley email 
+
+base_url<-"https://api.nytimes.com/svc/search/v2/articlesearch.json"
+
+query<-"community policing"
+
+# Send GET request and save the request in a dataframe 
+get_article <- function(page){
+  r <- httr::GET(base_url, 
+          query=list(q="community policing",
+                     "api-key"=apikey,
+                     "fq"="body:\"community policing\"",
+                      "begin_date"=19940101,
+                      "end_date"=20161231,
+                      "page"=page,
+                      "sort"="oldest"))
+  json <- httr::content(r, as = "text") 
+  data <- jsonlite::fromJSON(json, simplifyDataFrame = TRUE, flatten=T)
+  return(data$response$docs$web_url)
+  }
+
+```
+
+
+```{r}
+# Get urls from API call, save in NYT 
+
+NYT <- list()
+for (i in 0:71){
+  nytSearch <- get_article(i)
+  message("Retrieving page ", i)
+  NYT[[i + 1]] <- nytSearch
+  Sys.sleep(3)
+}
+```
+
+
+
+```{r}
+#Convert NYT from list of NYT urls to a data frame 
+
+NYT_to_COP <- do.call(rbind, lapply(NYT, data.frame, stringsAsFactors=FALSE))
+write.csv(NYT_to_COP,"COP.articles.csv")
+```
+
+
+```{r}
+#Load data
+COP.articles <- read.csv("COP.articles.csv", stringsAsFactors = FALSE)
+```
+
+
+```{r}
+
+# url encode the column name
+#COP.articles$web_url2 <- URLencode(COP.articles$web_url2)
+
+#Transform rows from factors to character strings 
+#COP.articles2 <- as.character(COP.articles$web_url)
+
+
+```
+
+
+# Webscraping 
+
+
+```{r}
+#Create scraping function 
+
+scrape_article_contents<-function(url) {
+  
+  NYT_archive1 <- read_html(url)
+  #NYT_archives <- read_html(COP.articles$web_url)
+  
+  NYT_art_content <- NYT_archive1 %>% html_nodes(css = "p")
+  # alternative code: article_content <- NYT_art_content %>% html_nodes(css = ".story-content")
+  #NYT_art_content <- NYT_archive1 %>% html_nodes(xpath = '//*[contains(concat( " ", @class, " " ), concat( " ", "story-content", " " ))]')
+  
+  # Create empty placeholder for my NYT articles 
+  Article_contents <- vector("list", length = length(NYT_archive1))
+  
+  # Create function to save document names and urls
+  for (i in seq_along(NYT_art_content)) {
+    docname <- xml_contents(NYT_art_content[i]) %>%
+      html_text(trim = TRUE)
+    url <- html_attr(NYT_art_content[i], "div p")
+    #Article_contents[[i]] <- data_frame(docname = docname, url = url)
+    Article_contents[[i]] <- docname
+    #Sys.sleep(3)
+  }
+  
+  final_art <-  paste(Article_contents, sep = " ", collapse = "")
+  #nyt.review.out<-getURLContent(as.character(COP.articles[1]),curl=getCurlHandle())
+  #a2 <- htmlTreeParse(nyt.review.url)
+  
+  # article_df <- as.character(Article_contents)
+  return(final_art)
+}
+```
+
+
+```{r}
+#test it
+example_contents <- scrape_article_contents(COP.articles$web_url[3])
+
+```
+
+
+```{r}
+#Get NYT article content using webscraper function
+
+# sapply loop for all articles 
+#all_content <- sapply(X = 1:length(COP.articles$web_url), FUN = function(row_index) {
+entries_to_fetch<- length(COP.articles$web_url)
+all_content <- sapply(X = 1:entries_to_fetch, FUN = function(row_index) {
+  result<-tryCatch(expr = {
+    # Get the URL form dataframe
+    url <- COP.articles$web_url[row_index];
+    # Return the scraped contents (as a row in our resulting dataframe)
+    return(scrape_article_contents(url))
+  },
+  error = function(e) {
+    # For debugging, why did this row fail
+    sprintf("error on row %d", row_index)
+    print(e)
+    # Return null so we can filter this row out
+    return(NULL)
+  })
+  return(result)
+})
+
+all_content
+
+
+```
+
+```{r}
+#Transform list with all scraped articles to dataframe 
+All_content <- do.call(rbind, lapply(all_content, data.frame, stringsAsFactors=FALSE))
+```
+
+```{r}
+#Save the scraped content as csv 
+write.csv(All_content,"All_articles.csv")
+```
+
+
+# Text Analysis 
+
+
+## Preprocessing 
+```{r}
+# Load the data
+all.art.corpus.df <- read.csv('All_articles.csv', stringsAsFactors = FALSE)
+#all.art.corpus <- all.art.corpus[-1]
+colnames(all.art.corpus.df)[2] <- "text"
+
+```
+
+```{r}
+# Create corpus
+all.art.corpus <- Corpus(VectorSource(all.art.corpus.df$text))
+```
+
+
+```{r}
+# Create a function that converts some `pattern` into a single space
+toSpace <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+
+```
+
+
+```{r}
+#Remove the weird stuff 
+all.art.corpus <- tm_map(all.art.corpus, toSpace, "—") #Weird hyphen
+all.art.corpus <- tm_map(all.art.corpus, toSpace, "“") # Left double quote
+all.art.corpus <- tm_map(all.art.corpus, toSpace, "”") # Right double quote
+all.art.corpus <- tm_map(all.art.corpus, toSpace, "’s") # Possessive
+all.art.corpus <- tm_map(all.art.corpus, toSpace, "’ve") # 
+all.art.corpus <- tm_map(all.art.corpus, toSpace, "’re") # 
+all.art.corpus <- tm_map(all.art.corpus, toSpace, "’")  # The rest 
+```
+
+
+```{r}
+# Create functions to merge New York City and New York State
+toNYC <- content_transformer(function (x) gsub("new york city", "nyc", x))
+all.art.corpus <- tm_map(all.art.corpus, toNYC)
+
+toNYS <- content_transformer(function (x) gsub("new york state", "nys", x))
+all.art.corpus <- tm_map(all.art.corpus, toNYS)
+```
+
+
+```{r}
+# More text processing 
+all.art.corpus <- tm_map(all.art.corpus, PlainTextDocument)
+all.art.corpus <- tm_map(all.art.corpus, content_transformer(tolower))
+all.art.corpus <- tm_map(all.art.corpus, removePunctuation)
+all.art.corpus <- tm_map(all.art.corpus, removeWords, stopwords('english'))
+all.art.corpus <- tm_map(all.art.corpus, removeNumbers)
+```
+
+
+```{r}
+## Remove more unwanted stuff 
+all.art.corpus <- tm_map(all.art.corpus, removeWords, "advertisementcby")
+all.art.corpus <- tm_map(all.art.corpus, removeWords, "advertisementsupported byletterto  editorcre")
+all.art.corpus <- tm_map(all.art.corpus, removeWords, "advertisementsupported byoped contributorscby")
+all.art.corpus <- tm_map(all.art.corpus, removeWords, "advertisementsupported byoped contributorcby") 
+all.art.corpus <- tm_map(all.art.corpus, removeWords, "advertisementsupported bysunday routinecby") 
+all.art.corpus <- tm_map(all.art.corpus, removeWords, "advertisementc") 
+all.art.corpus <- tm_map(all.art.corpus, removeWords, "advertisementsupported") 
+all.art.corpus <- tm_map(all.art.corpus, removeWords, "advertisementfollow") 
+all.art.corpus <- tm_map(all.art.corpus, removeWords, "neediest cases fund cby") 
+all.art.corpus <- tm_map(all.art.corpus, removeWords, "usget  upshot   inboxc") 
+all.art.corpus <- tm_map(all.art.corpus, removeWords, "bycby") 
+all.art.corpus <- tm_map(all.art.corpus, removeWords, "byeditorialcby") 
+all.art.corpus <- tm_map(all.art.corpus, removeWords, "new york time opinion section facebook twitter nytopinion sign opinion today newsletteradvertisementcharactercharactercharactercollapsese option") 
+all.art.corpus <- tm_map(all.art.corpus, removeWords, "full story  advertisementcharactercharactercharactercollapsesee  options") 
+all.art.corpus <- tm_map(all.art.corpus, removeWords, "upshot provides news analysis  graphics  politics policy  everyday life follow us  facebook  twitter  sign    newsletter cwe’re interested   feedback   page tell us   thinkgo  home page") 
+all.art.corpus <- tm_map(all.art.corpus, removeWords, "advertisementcharactercharactercharactercollapses option") 
+all.art.corpus <- tm_map(all.art.corpus, removeWords, "order reprint today papersubscrib interest feedback page tell thinkgo home page") 
+all.art.corpus <- tm_map(all.art.corpus, removeWords, "studyingadvertisementopinion") 
+all.art.corpus <- tm_map(all.art.corpus, removeWords, "themadvertisement") 
+all.art.corpus <- tm_map(all.art.corpus, removeWords, "society”advertisementthi") 
+all.art.corpus <- tm_map(all.art.corpus, removeWords, "advertisementcharactercharactercharactercollapsesee options") 
+
+all.art.corpus <- tm_map(all.art.corpus, removeWords, "international herald tribune todays papersubscribe cwe’re interested   feedback   page tell us   thinkgo  home page")
+all.art.corpus <- tm_map(all.art.corpus, removeWords,"news blog  live reporting features  reader conversations  new york city   archived send questions  suggestions  email end entryadvertisement")
+all.art.corpus <- tm_map(all.art.corpus, removeWords,"weekday morning   roundup  mondays print edition   can find  latest entries  nytimescomdiary    new york section onlineccity room®")
+all.art.corpus <- tm_map(all.art.corpus, removeWords,"oped appears  print    page    new york edition   headline")
+all.art.corpus <- tm_map(all.art.corpus, removeWords,"nypd todays papersubscribe cwe’re interested   feedback   page tell us   thinkgo  home page")
+all.art.corpus <- tm_map(all.art.corpus, removeWords,"interested   feedback   page tell us   thinkgo  home page")
+all.art.corpus <- tm_map(all.art.corpus, removeWords,"order reprints todays papersubscribe go home page")
+
+all.art.corpus <- tm_map(all.art.corpus, removeWords,"themadvertisementbut")
+all.art.corpus <- tm_map(all.art.corpus, removeWords,"promotionadvertisementbut")
+all.art.corpus <- tm_map(all.art.corpus, removeWords,"applyadvertisementgrace")
+
+all.art.corpus <- tm_map(all.art.corpus, removeWords,"examadvertisementa")
+all.art.corpus <- tm_map(all.art.corpus, removeWords,"forceadvertisementwere")
+all.art.corpus <- tm_map(all.art.corpus, removeWords,"minoritiesadvertisementminorities")
+all.art.corpus <- tm_map(all.art.corpus, removeWords,"wayadvertisementnew")
+
+all.art.corpus <- tm_map(all.art.corpus, removeWords,"advertisementcharacterinternational")
+all.art.corpus <- tm_map(all.art.corpus, removeWords,"archivefeedbacknytimescomca")
+
+all.art.corpus <- tm_map(all.art.corpus, removeWords,"japanes")
+all.art.corpus <- tm_map(all.art.corpus, removeWords,"facebook")
+all.art.corpus <- tm_map(all.art.corpus, removeWords,"twitter")
+
+```
+
+
+```{r}
+# Remove white space
+all.art.corpus <- tm_map(all.art.corpus, stripWhitespace)
+# Stems words 
+# all.art.corpus <- tm_map(all.art.corpus, stemDocument)
+
+```
+
+```{r}
+#Inspect 
+inspect(all.art.corpus[670])
+```
+
+
+## Create Term Document Matrix 
+```{r}
+TDM <- TermDocumentMatrix(all.art.corpus)
+inspect(TDM[1:10,1:10])
+
+```
+
+```{r}
+TDM.mtx <- as.matrix(TDM)
+TDM.mtx <- tibble::rownames_to_column(as.data.frame(TDM.mtx))
+names(TDM.mtx)<-c("word", "frequency")
+TDM.mtx <- TDM.mtx[order(-TDM.mtx$frequency),]
+
+```
+
+# Word Clouds 
+```{r}
+colorVec = colorRampPalette(c("#151A64", "#4292C6"))(nrow(TDM.mtx))
+
+wordcloud2(TDM.mtx, 
+          rotateRatio = 0, 
+          color = colorVec,
+          shape = 'circle')
+```
+
+
+```{r}
+wordcloud2(TDM.mtx,
+  color = ifelse(demoFreq[, 2] > 20, 'red', 'blue'))
+```
+
+```{r}
+wordcloud(d$word,d$freq,scale=c(1.5,1),min.freq=750,max.words=Inf,
+	random.order=TRUE, random.color=FALSE, rot.per=.1,
+	colors="black",ordered.colors=FALSE,use.r.layout=FALSE,
+	fixed.asp=TRUE)
+```
+
+ 
+```{r}
+TDM.mtx2 <- as.matrix(TDM)
+v <- sort(rowSums(TDM.mtx2),decreasing=TRUE)
+d <- data.frame(word = names(v),freq=v)
+head(d, 25)
+
+```
+ 
+```{r}
+barplot(d[1:30,]$freq, las = 2, names.arg = d[1:30,]$word,
+        col ="grey", main ="20 Most Frequent Words",
+        ylab = "Frequencies")
+```
+
+```{r}
+# Find word frequencies
+
+#words that appear at least 700 times
+findFreqTerms(TDM, lowfreq = 780)
+```
+ 
+
+```{r}
+#Find words that correlate 
+
+findAssocs(TDM, terms = "black", corlimit = 0.45)
+findAssocs(TDM, terms = "hispanic", corlimit = 0.5)
+findAssocs(TDM, terms = "white", corlimit = 0.65)
+#findAssocs(TDM, terms = "guilt", corlimit = 0.70)
+```
+ 
+
+```{r}
+#Save as csv 
+TDM.2 <- as.data.frame(as.matrix(TDM))
+write.csv(TDM.2,"DocTermMatrix.csv")
+
+write.csv(all.art.corpus,"NYT_corpus.csv")
+
+```
+
+
+# Structural Topic Modeling 
+
+```{r}
+# Load Data 
+STM.df <- read.csv('NYT_corpus.csv', stringsAsFactors = FALSE)
+```
+
+
+```{r}
+# Pre-process
+STM.COP <-textProcessor(documents=STM.df$text, metadata=STM.df)
+meta<-STM.COP$meta
+vocab<-STM.COP$vocab
+docs<-STM.COP$documents
+out <- prepDocuments(docs, vocab, meta, lower.thresh=10)
+docs<-out$documents
+vocab<-out$vocab
+meta <-out$meta
+```
+
+```{r}
+# Model without predictor 
+
+fit0 <- stm(out$documents, # the documents
+            out$vocab, # the words
+            K = 4, # 10 topics
+            max.em.its = 50, # set to run for a maximum of 50 EM iterations
+            data = out$meta, # all the variables (we're not actually including any predictors in this model, though)
+            init.type = "Spectral")  
+```
+
+
+```{r}
+labelTopics(fit0)
+```
+
+```{r}
+plot.STM(fit0, type = "labels") 
+#labels = c("Politics", "Violence", "Public Health", "Travel", "Fashion")
+```
+
+```{r}
+plot.STM(fit0, type = "summary") 
+```
+
+
+```{r}
+round(topicCorr(fit0)$cor, 2)
+```
+
