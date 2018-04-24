@@ -7,9 +7,9 @@ Dependencies
 R, version 3.4.2
 
 Files
-List all other files contained in the repo, along with a brief description of each one, like so:
 
 Data
+
 nyt_urls: first attempt at url scrape and save 
 COP.articles.csv: All 714 weburls related to "community policing" from New York times API archive 
 All_articles.csv:the content from all NYT articles saved as a csv file 
@@ -18,15 +18,17 @@ NYT_corpus.csv: the content of all the NYT articles saved as a single csv corpus
 Doc_Term_Matrix.csv: the document term matrix of all articles, cleaned, for text editing saved as a csv
 
 Code
+
 PS239 T Final.py: Collects data from New York Times API and exports data to the file COP.articles.csv. Scrapes the content of web urls from COP.articles.csv, saves at All_articles.csv. Loads and cleans raw data, saves as NYT_corpus for text analysis. Conducts descriptive analysis of the data, producing the tables and visualizations found in the Visualizations directory.
 
 Results
+
 coverage-over-time.jpeg: Graphs the number of articles about each region over time.
 regression-table.txt: Summarizes the results of OLS regression, modelling nyt on a number of covariates.
 More Information
 
-Visualizations 
-Three World Clouds
+Visualizations
+
 First Draft Word Cloud.pdf: first attempt of the word cloud, using only scraped and cleaned data from 220 NYT web urls. This data was stemmed. Future word cloud data was not stemmed. 
 Final_Dark_Blud_Cloud: Final version of the word cloud, solid dark blud color
 Final_Multi_Cloud: Final version of word cloud, with most frequent words centralized and in red; less frequent words are on the periphery and in blue. 
