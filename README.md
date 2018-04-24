@@ -25,7 +25,7 @@ R, version 3.4.2
 
 **Visualizations**
 
-**First Draft Word Cloud.pdf: first attempt of the word cloud, using only scraped and cleaned data from 220 NYT web urls. This data was stemmed. Future word cloud data was not stemmed  
+**First Draft Word Cloud.pdf:** first attempt of the word cloud, using only scraped and cleaned data from 220 NYT web urls. This data was stemmed. Future word cloud data was not stemmed  
 **Final_Dark_Blud_Cloud:** Final version of the word cloud, solid dark blud color  
 **Final_Multi_Cloud:** Final version of word cloud, with most frequent words centralized and in red; less frequent words are on the periphery and in blue   
 **20_most:** bar chart of the 20 most frequent words  
